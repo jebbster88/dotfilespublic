@@ -1,0 +1,19 @@
+#!/bin/bash
+
+source ~/.cache/wal/colors.sh
+
+OPTIND=1
+
+current=`optimus-manager --print-mode | grep -o 'nvidia\|intel' | tr '[:lower:]' '[:upper:]'`
+case $BLOCK_BUTTON in
+    1) 
+        case $current in
+            "NVIDIA") next="intel";;
+            "INTEL") next="nvidia";;
+        esac
+        $TERMINAL -e "optimus-manager --switch $next"
+        ;;
+esac
+echo "<span color='$color0' bgcolor='$color5'>$LABEL $current </span>"
+echo "<span color='$color0' bgcolor='$color5'>$LABEL ${current:0:2} </span>"
+echo $color5

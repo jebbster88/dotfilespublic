@@ -1,0 +1,222 @@
+#!/usr/bin/perl
+#
+# Temp<CPU<BATTERY<
+
+use strict;
+use warnings;
+use utf8;
+
+open my $handle, '<', glob('~/.cache/wal/colors');
+chomp(my @color = <$handle>);
+close $handle;
+
+my $alertcolor = $color[1];
+my $prevbg = $color[5];
+my $fg = $color[0];
+my $bg = $color[2];
+
+sub powerline{
+  my $text = $_[0];
+  my $fg = $_[1];
+  my $bg = $_[2];
+  my $prev_bg = $_[3];
+  
+  my $sep;
+  my $body;
+  if ($bg eq $prev_bg) {
+    $sep = "<span color='$fg' bgcolor='$bg'>  </span>";
+  } else {
+    $sep = "<span color='$prev_bg' bgcolor='$bg'> </span>";
+  }
+  $body = "<span color='$fg' bgcolor='$bg'> $text</span>";
+  return $body.$sep;
+}
+
+sub battery {
+  # read the first line of the "acpi" command output
+  open (ACPI, "acpi -b | grep 'Battery 0' |") or die;
+  my $acpi = <ACPI>;
+  close(ACPI);
+  
+  # fail on unexpected output
+  if ($acpi !~ /: (\w+), (\d+)%/) {
+    die "$acpi\n";
+  }
+
+  my $status = $1;
+  my $percent = $2;
+
+
+  my $text;
+  if ($status eq 'Discharging') {
+    $text .= " $percent%";
+  } elsif ($status eq 'Charging') {
+    $text .= " $percent%";
+  } elsif ($status eq 'Full') {
+    $text .= " $percent%";
+  } elsif ($status eq 'Unknown') {
+    $text .= "⚡ $percent%";
+  }
+
+  if ($acpi =~ /(\d\d:\d\d):/) {
+    $text .= " ($1)";
+  }
+
+  if ($status eq 'Discharging') {
+
+    # icons
+    if ($percent < 10) {
+      $text = "$text";
+    } elsif ($percent < 25) {
+      $text = "$text";
+    } elsif ($percent < 50) {
+      $text = "$text";
+    } elsif ($percent < 75) {
+      $text = "$text";
+    } else {
+      $text = "$text";
+    }
+
+    # colors
+    if ($percent < 20) {
+      $bg = $alertcolor;
+    } elsif ($percent < 40) {
+      $bg = $color[3];
+    } elsif ($percent < 60) {
+      $bg = $color[6];
+    }
+
+  }
+  return ($text, $text, $bg)
+}
+
+sub cpu {
+  my $cpu_usage;
+  open (MPSTAT, 'mpstat 1 1 |') or die;
+  while (<MPSTAT>) {
+      if (/^.*\s+(\d+\.\d+)\s+$/) {
+          $cpu_usage = 100 - $1; # 100% - %idle
+          last;
+      }
+  }
+  close(MPSTAT);
+
+  $cpu_usage eq -1 and die 'Can\'t find CPU information';
+
+  my $turbo = `head /sys/devices/system/cpu/intel_pstate/no_turbo | grep -o '[0-1]'`;
+
+  my $t = "";
+  if ($turbo == "0") {
+      $t = "T";
+  }
+
+  if ($cpu_usage >= 80) {
+    $bg = $alertcolor;
+  } elsif ($cpu_usage >= 50) {
+    $bg = $color[3];
+  } else {
+    $bg = $color[2];
+  }
+  
+  my $text = sprintf("%.2f%%%s", $cpu_usage, $t);
+  return ($text, $text, $bg);
+}
+
+sub temperature {
+  my $chip = "coretemp-isa-0000";
+  my $temperature;
+  open (SENSORS, "sensors -u $chip |") or die;
+  while (<SENSORS>) {
+      if (/^\s+temp1_input:\s+[\+]*([\-]*\d+\.\d)/) {
+          $temperature = $1;
+          last;
+      }
+  }
+  close(SENSORS);
+
+  $temperature eq -9999 and die 'Cannot find temperature';
+  
+  my $icon;
+  if ($temperature >= 80) {
+    $icon = "";
+    $bg = $alertcolor;
+  } elsif ($temperature >= 60) {
+    $icon = "";
+    $bg = $color[3];
+  } else {
+    $icon = "";
+    $bg = $color[4];
+  }
+
+  # Print short_text, full_text
+  my $text = "$icon$temperature°C";
+  return ($text, $text, $bg);
+ 
+}
+
+sub wifi {
+  my $ssid;
+  open (IW, "iw dev |") or die;
+  while (<IW>) {
+    if (/^\s+ssid\s(.*)$/) {
+      $ssid = $1;
+    }
+  }
+  return ($ssid, $ssid, $color[7]);
+}
+
+sub disk {
+  my $icon = $_[0];
+  my $path = $_[1];
+  my $freespace = `df -h -P /home | awk '/\\/.*/{print \$4}' | tr -d '\\n'`;
+  my $text = "$icon $freespace";
+  return ($text, $text, $color[8]);
+}
+
+sub memory {
+  
+}
+
+my $final_fulltext = "";
+my $final_shorttext = "";
+my $full_text;
+my $short_text;
+
+($full_text, $short_text, $bg) = battery;
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+
+($full_text, $short_text, $bg) = cpu;
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+
+($full_text, $short_text, $bg) = temperature;
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+
+($full_text, $short_text, $bg) = wifi;
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+
+($full_text, $short_text, $bg) = disk("", "/home");
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+($full_text, $short_text, $bg) = disk(" /", "/");
+$final_fulltext = powerline($full_text, $color[0], $bg, $prevbg) . $final_fulltext;
+$final_shorttext = powerline($short_text, $color[0], $bg, $prevbg) . $final_shorttext;
+$prevbg = $bg;
+
+$final_fulltext = "<span color='$prevbg' ></span>" . $final_fulltext;
+$final_shorttext = "<span color='$prevbg' ></span>" . $final_shorttext;
+
+# print text
+print "$final_fulltext\n";
+print "$final_shorttext\n";
+print "\n";
+
+exit(0);
